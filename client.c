@@ -83,7 +83,7 @@ int main(int argc, char **argv) {
                 printf("Wrong syntax! Try /help to see command menu.\n");
                 fflush(stdout);
                 continue;
-            } else if (!strcmp("/fac", str)) {
+            } else if (!strcmp("/f", str) || !strcmp("/s", str)) {
                 str = strtok(NULL, sep);
                 if (str != NULL) {
                     int pay = atoi(str);

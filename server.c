@@ -240,7 +240,11 @@ void *clientHandler(void *args) {
                     send(sock, msg, sizeof(msg), 0);
                 }
 
-            } else if (!strcmp("/fac", msg)) {
+            } else if (!strcmp("/f", msg) || !strcmp("/s", msg)) {
+                int opcode = 0;
+                if (!strcmp("/s", msg)) {
+                    opcode = 1;
+                }
                 str = strtok(NULL, sep);
                 if (str != NULL) {
                     int arg = atoi(str);
@@ -251,24 +255,43 @@ void *clientHandler(void *args) {
                         continue;
                     }
 
-//                    pthread_mutex_lock(&mutex);
+
 
                     if (arg <= 0) { // we aint no fools righ here
                         strcpy(msg, "OPERATION ERROR:");
                         send(sock, msg, sizeof(msg), 0);
-                        strcpy(msg, "Your argument (and IQ) are below zero");
+                        strcpy(msg, "Your argument is below zero");
                         send(sock, msg, sizeof(msg), 0);
                         printf("Client %d has smol brain\n", index);
                         continue;
                     }
 
 
+
                     strcpy(msg, "Calculating.."); // ok we good
                     send(sock, msg, sizeof(msg), 0);
+                    sleep(2);
 
-                    printf("Received factorial of %d from client %d.\n", arg, index);
-                    u_int64_t result = factorial(arg);
-                    snprintf(msg, SIZE_MSG, "Calculation complete.\nYour result: %lu", result);
+//                    pthread_mutex_lock(&mutex);
+
+                    switch (opcode){
+                        case 0: {
+                            printf("Received factorial of %d from client %d.\n", arg, index);
+                            u_int64_t result = factorial(arg);
+                            snprintf(msg, SIZE_MSG, "Calculation complete.\nYour result: %lu", result);
+                            break;
+                        }
+                        case 1: {
+                            printf("Received square root of %d from client %d.\n", arg, index);
+                            double_t result = sqrt(arg);
+                            snprintf(msg, SIZE_MSG, "Calculation complete.\nYour result: %f", result);
+                            break;
+                        }
+                        default:
+                            break;
+                    }
+
+
 
                     send(sock, msg, sizeof(msg), 0);
 //                    pthread_mutex_unlock(&mutex);
