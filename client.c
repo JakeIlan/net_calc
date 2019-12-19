@@ -69,7 +69,12 @@ int main(int argc, char **argv) {
 
         if (!strcmp("/help", inputBuf)) {
             printf("HELP:\n");
-            printf("\'/quit or /q\' to leave after paying receipt\n");
+            printf("You can perform simple math operations with 2 arguments:\n");
+            printf("(-)ARG1(+-*/)(-)ARG2\n");
+            printf("NOTE: Args can be signed or unsigned\n");
+            printf("You can also use \'/f NUM\' or \'/s NUM\' to request fractal or square root\n");
+            printf("NOTE: Args must be > 0\n");
+            printf("\'/quit or /q\' to leave\n");
             fflush(stdout);
         } else if (!strcmp("/q", inputBuf) || !strcmp("/quit", inputBuf)) {
             shutdown(sock, 2);

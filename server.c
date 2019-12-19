@@ -93,6 +93,9 @@ int main(int argc, char **argv) {
 
         if (!strcmp("/help", buf)) {
             printf("HELP:\n");
+            printf("\'/lc' to view current clients\n");
+            printf("\'/kick NUM' to kick NUM'th client\n");
+            printf("\'/quit or /q\' to quit\n");
             fflush(stdout);
         } else if (!strcmp("/lc", buf)) {
             printf("Clients on-line:\n");
@@ -238,14 +241,19 @@ void *clientHandler(void *args) {
                 while (*tar != '\r' && *tar != '\0') {
 
 //                    cnt = getNumber(tar, &arg1);
-
+                    if (*tar == '-') {
+                        printf("Found negative mult\n");
+                        k = -1;
+                        tar++;
+                        printf("Current target char %c\n", *tar);
+                    }
                     if ((cnt = getNumber(tar, &arg1)) <= 0) {
                         strcpy(outMsg, "No first argument\n");
                         send(sock, outMsg, sizeof(outMsg), 0);
                         *tar = '\0';
                         break;
                     }
-
+                    arg1 *= k;
                     tar += cnt;
                     printf("Total arg1 = %f\n", arg1);
 
@@ -287,6 +295,7 @@ void *clientHandler(void *args) {
                         case '*': {
                             printf("Found *\n");
                             tar++;
+                            k = 1;
 
                             if (*tar == '-') {
                                 printf("Found negative mult\n");
@@ -302,9 +311,9 @@ void *clientHandler(void *args) {
                             }
 
                             tar += cnt;
-                            printf("Arg2 = %.2f\n", arg2);
+//                            printf("Arg2 = %.2f\n", arg2);
                             arg2 *= k;
-                            printf("Arg2 * k = %.2f\n", arg2);
+//                            printf("Arg2 * k = %.2f\n", arg2);
 //                            printf("Total arg2 = %f\n", arg2);
                             result = arg1 * arg2;
                             printf("Result : %f * %f = %f\n", arg1, arg2, result);
@@ -314,6 +323,14 @@ void *clientHandler(void *args) {
                         case '/': {
                             printf("Found /\n");
                             tar++;
+                            k = 1;
+
+                            if (*tar == '-') {
+                                printf("Found negative mult\n");
+                                k = -1;
+                                tar++;
+                                printf("Current target char %c\n", *tar);
+                            }
                             if ((cnt = getNumber(tar, &arg2)) <= 0) {
                                 printf("No second argument\n");
                                 strcpy(outMsg, "No second argument\n");
@@ -323,10 +340,11 @@ void *clientHandler(void *args) {
 
                             tar += cnt;
                             printf("Total arg2 = %f\n", arg2);
-                            if (arg2 == 0) {
+                            if (arg2 == 0 || arg2 == -0) {
                                 strcpy(outMsg, "ERROR: divide by 0\n");
                                 break;
                             }
+                            arg2 *= k;
                             result = arg1 / arg2;
                             printf("Result : %f / %f = %f\n", arg1, arg2, result);
                             snprintf(outMsg, SIZE_MSG, "Result : %.2f / %.2f = %.2f\n", arg1, arg2, result);
