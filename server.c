@@ -16,7 +16,7 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct tInfo {
     pthread_t threadId;
-    char* address;
+    char *address;
     int port;
     int socket;
     int number;
@@ -94,18 +94,18 @@ int main(int argc, char **argv) {
         if (!strcmp("/help", buf)) {
             printf("HELP:\n");
             fflush(stdout);
-        } else if(!strcmp("/lc", buf)){
-                printf("Clients on-line:\n");
-                printf(" NUMBER    ADDRESS         PORT\n");
+        } else if (!strcmp("/lc", buf)) {
+            printf("Clients on-line:\n");
+            printf(" NUMBER    ADDRESS         PORT\n");
 
-                pthread_mutex_lock(&mutex);
-                for(int i = 0; i < clientQuantity; i++){
-                    if(clients[i].socket != -1)
-                        printf("  %d       %s        %d\n", clients[i].number, clients[i].address, clients[i].port);
-                }
-                pthread_mutex_unlock(&mutex);
+            pthread_mutex_lock(&mutex);
+            for (int i = 0; i < clientQuantity; i++) {
+                if (clients[i].socket != -1)
+                    printf("  %d       %s        %d\n", clients[i].number, clients[i].address, clients[i].port);
+            }
+            pthread_mutex_unlock(&mutex);
 
-                fflush(stdout);
+            fflush(stdout);
         } else if (!strcmp("/quit", buf) || !strcmp("/q", buf)) {
             shutdown(listener, 2);
             close(listener);
@@ -230,19 +230,37 @@ void *clientHandler(void *args) {
             } else {
                 printf("Parsing %s\n", msg);
                 char *tar = msg;
+                int cnt;
+                int k = 1;
                 double arg1 = 0, arg2 = 0;
                 double result;
 
                 while (*tar != '\r' && *tar != '\0') {
 
-                    tar += getNumber(tar, &arg1);
+//                    cnt = getNumber(tar, &arg1);
+
+                    if ((cnt = getNumber(tar, &arg1)) <= 0) {
+                        strcpy(outMsg, "No first argument\n");
+                        send(sock, outMsg, sizeof(outMsg), 0);
+                        *tar = '\0';
+                        break;
+                    }
+
+                    tar += cnt;
                     printf("Total arg1 = %f\n", arg1);
 
                     switch (*tar) {
                         case '+': {
                             printf("Found +\n");
                             tar++;
-                            tar += getNumber(tar, &arg2);
+                            if ((cnt = getNumber(tar, &arg2)) <= 0) {
+                                printf("No second argument\n");
+                                strcpy(outMsg, "No second argument\n");
+                                *tar = '\0';
+                                break;
+                            }
+
+                            tar += cnt;
                             printf("Total arg2 = %f\n", arg2);
                             result = arg1 + arg2;
                             printf("Result : %f + %f = %f\n", arg1, arg2, result);
@@ -252,7 +270,14 @@ void *clientHandler(void *args) {
                         case '-': {
                             printf("Found -\n");
                             tar++;
-                            tar += getNumber(tar, &arg2);
+                            if ((cnt = getNumber(tar, &arg2)) <= 0) {
+                                printf("No second argument\n");
+                                strcpy(outMsg, "No second argument\n");
+                                *tar = '\0';
+                                break;
+                            }
+
+                            tar += cnt;
                             printf("Total arg2 = %f\n", arg2);
                             result = arg1 - arg2;
                             printf("Result : %f - %f = %f\n", arg1, arg2, result);
@@ -262,8 +287,25 @@ void *clientHandler(void *args) {
                         case '*': {
                             printf("Found *\n");
                             tar++;
-                            tar += getNumber(tar, &arg2);
-                            printf("Total arg2 = %f\n", arg2);
+
+                            if (*tar == '-') {
+                                printf("Found negative mult\n");
+                                k = -1;
+                                tar++;
+                                printf("Current target char %c\n", *tar);
+                            }
+                            if ((cnt = getNumber(tar, &arg2)) <= 0) {
+                                printf("No second argument\n");
+                                strcpy(outMsg, "No second argument\n");
+                                *tar = '\0';
+                                break;
+                            }
+
+                            tar += cnt;
+                            printf("Arg2 = %.2f\n", arg2);
+                            arg2 *= k;
+                            printf("Arg2 * k = %.2f\n", arg2);
+//                            printf("Total arg2 = %f\n", arg2);
                             result = arg1 * arg2;
                             printf("Result : %f * %f = %f\n", arg1, arg2, result);
                             snprintf(outMsg, SIZE_MSG, "Result : %.2f * %.2f = %.2f\n", arg1, arg2, result);
@@ -272,8 +314,19 @@ void *clientHandler(void *args) {
                         case '/': {
                             printf("Found /\n");
                             tar++;
-                            tar += getNumber(tar, &arg2);
+                            if ((cnt = getNumber(tar, &arg2)) <= 0) {
+                                printf("No second argument\n");
+                                strcpy(outMsg, "No second argument\n");
+                                *tar = '\0';
+                                break;
+                            }
+
+                            tar += cnt;
                             printf("Total arg2 = %f\n", arg2);
+                            if (arg2 == 0) {
+                                strcpy(outMsg, "ERROR: divide by 0\n");
+                                break;
+                            }
                             result = arg1 / arg2;
                             printf("Result : %f / %f = %f\n", arg1, arg2, result);
                             snprintf(outMsg, SIZE_MSG, "Result : %.2f / %.2f = %.2f\n", arg1, arg2, result);
