@@ -9,32 +9,26 @@
 #include <string.h>
 #include <math.h>
 
-#define PORT 12345 //Порт сервера
+#define PORT 1234 //Порт сервера
 #define SIZE_MSG 100
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 struct tInfo {
     pthread_t threadId;
-    pthread_t timerThd;
+    char* address;
+    int port;
     int socket;
-    char lic[10];
-    int debt;
     int number;
-    int time;
-    int cond; // cond == 1 -> is parked; 0 -> new client, 2 -> leave request, 3 -> payed off, able to quit
 } *clients;
 
-struct payLog {
-    int client;
-    int payment;
-    int change;
-} *pLog;
 
 int clientQuantity = 0;
 int operations = 0;
 
 void *clientHandler(void *args);
+
+int getNumber(char *tar, double *res);
 
 u_int64_t factorial(int n);
 
@@ -99,36 +93,24 @@ int main(int argc, char **argv) {
 
         if (!strcmp("/help", buf)) {
             printf("HELP:\n");
-            printf("\'/lc\' to list clients\n");
-            printf("\'/log\' to see transaction history\n");
-            printf("\'/kick [number client]\' to kick client from server;\n");
-            printf("\'/quit or /q\' to shutdown;\n");
             fflush(stdout);
-        } else if (!strcmp("/lc", buf)) {
-            printf("Clients on-line:\n");
-            printf("N TIME LIC\n");
+        } else if(!strcmp("/lc", buf)){
+                printf("Clients on-line:\n");
+                printf(" NUMBER    ADDRESS         PORT\n");
 
-            pthread_mutex_lock(&mutex);
-            for (int i = 0; i < clientQuantity; i++) {
-                if (clients[i].socket != -1)
-                    printf("%d %d %s\n", clients[i].number, clients[i].time, clients[i].lic);
-            }
-            pthread_mutex_unlock(&mutex);
+                pthread_mutex_lock(&mutex);
+                for(int i = 0; i < clientQuantity; i++){
+                    if(clients[i].socket != -1)
+                        printf("  %d       %s        %d\n", clients[i].number, clients[i].address, clients[i].port);
+                }
+                pthread_mutex_unlock(&mutex);
 
-            fflush(stdout);
+                fflush(stdout);
         } else if (!strcmp("/quit", buf) || !strcmp("/q", buf)) {
             shutdown(listener, 2);
             close(listener);
             pthread_join(listenerThread, NULL);
             break;
-        } else if (!strcmp("/log", buf)) {
-            int sum = 0;
-            for (int i = 0; i < operations; i++) {
-                printf("Client %d payed %d$ and gained %d$ back\n",
-                       pLog[i].client, pLog[i].payment, pLog[i].change);
-                sum += pLog[i].payment - pLog[i].change;
-            }
-            printf("Total profit: %d$\n", sum);
         } else {
             char *sep = " ";
             char *str = strtok(buf, sep);
@@ -157,7 +139,6 @@ int main(int argc, char **argv) {
     printf("ENDED SERVER!\n");
     fflush(stdout);
     free(clients);
-    free(pLog);
     return 0;
 }
 
@@ -169,6 +150,7 @@ void *clientHandler(void *args) {
     int sock = clients[index].socket;
     pthread_mutex_unlock(&mutex);
 
+    char outMsg[SIZE_MSG] = {0};
     char msg[SIZE_MSG] = {0};
     for (;;) {
         if (readN(sock, msg) <= 0) {
@@ -181,38 +163,6 @@ void *clientHandler(void *args) {
             pthread_mutex_unlock(&mutex);
             break;
 
-        } else if (!strcmp("/release", msg)) {
-            printf("Client №%d sent leave request.\n", index);
-            fflush(stdout);
-            if (clients[index].cond == 1) {
-                snprintf(msg, SIZE_MSG, "%d", clients[index].time);
-                send(sock, msg, sizeof(msg), 0);
-                clients[index].cond = 2;
-                clients[index].debt = clients[index].time * 2;
-                snprintf(msg, SIZE_MSG, "%d", clients[index].debt);
-                send(sock, msg, sizeof(msg), 0);
-            } else if (clients[index].cond == 0 || clients[index].cond == 3) {
-                strcpy(msg, "You need to park your car first\n");
-                send(sock, msg, sizeof(msg), 0);
-                strcpy(msg, "Use /park LICENSE\n");
-                send(sock, msg, sizeof(msg), 0);
-            } else if (clients[index].cond == 2) {
-                strcpy(msg, "You already sent release request\n");
-                send(sock, msg, sizeof(msg), 0);
-                strcpy(msg, "Now you can /pay NUM to pay your debt\n");
-                send(sock, msg, sizeof(msg), 0);
-            }
-
-            //  kickClient(index);
-        } else if ((!strcmp("/q", msg)) || (!strcmp("/quit", msg))) {
-            if (clients[index].cond == 3) {
-                kickClient(index);
-            } else {
-                strcpy(msg, "You have to pay your debt before quitting\n");
-                send(sock, msg, sizeof(msg), 0);
-                printf("Client %d tried to quit without paying debt\n", index);
-                fflush(stdout);
-            }
         } else {
             char *sep = " ";
             char *str = strtok(msg, sep);
@@ -221,26 +171,7 @@ void *clientHandler(void *args) {
                 fflush(stdout);
                 continue;
             }
-            if (!strcmp("/park", str)) {
-                if (clients[index].cond == 0) {
-                    str = strtok(NULL, sep);
-                    if (str != NULL) {
-                        strcpy(clients[index].lic, str);
-                        clients[index].cond = 1;
-                        printf("added LIC %s\n", str);
-                        strcpy(msg, "You parked successfully, when you ready to leave, use /release.\n");
-                        send(sock, msg, sizeof(msg), 0);
-                        fflush(stdout);
-                    }
-                } else if (clients[index].cond == 1 || clients[index].cond == 2) {
-                    strcpy(msg, "You cannot park another car before releasing previous one.\n");
-                    send(sock, msg, sizeof(msg), 0);
-                } else if (clients[index].cond == 3) {
-                    strcpy(msg, "You payed your debt and now allowed to leave. To park new car restart client.\n");
-                    send(sock, msg, sizeof(msg), 0);
-                }
-
-            } else if (!strcmp("/f", msg) || !strcmp("/s", msg)) {
+            if (!strcmp("/f", msg) || !strcmp("/s", msg)) {
                 int opcode = 0;
                 if (!strcmp("/s", msg)) {
                     opcode = 1;
@@ -250,41 +181,39 @@ void *clientHandler(void *args) {
                     int arg = atoi(str);
 
                     if (str[0] != '0' && arg == 0) {
-                        strcpy(msg, "Dude, you have to /pay NUMBER.\n");
-                        send(sock, msg, sizeof(msg), 0);
+                        strcpy(outMsg, "Dude, you have to /pay NUMBER.\n");
+                        send(sock, outMsg, sizeof(outMsg), 0);
                         continue;
                     }
 
 
-
                     if (arg <= 0) { // we aint no fools righ here
-                        strcpy(msg, "OPERATION ERROR:");
-                        send(sock, msg, sizeof(msg), 0);
-                        strcpy(msg, "Your argument is below zero");
-                        send(sock, msg, sizeof(msg), 0);
+                        strcpy(outMsg, "OPERATION ERROR:");
+                        send(sock, outMsg, sizeof(outMsg), 0);
+                        strcpy(outMsg, "Your argument is below zero");
+                        send(sock, outMsg, sizeof(outMsg), 0);
                         printf("Client %d has smol brain\n", index);
                         continue;
                     }
 
 
+                    strcpy(outMsg, "Calculating.."); // ok we good
+                    send(sock, outMsg, sizeof(outMsg), 0);
+                    sleep(5);
 
-                    strcpy(msg, "Calculating.."); // ok we good
-                    send(sock, msg, sizeof(msg), 0);
-                    sleep(2);
+                    pthread_mutex_lock(&mutex);
 
-//                    pthread_mutex_lock(&mutex);
-
-                    switch (opcode){
+                    switch (opcode) {
                         case 0: {
                             printf("Received factorial of %d from client %d.\n", arg, index);
                             u_int64_t result = factorial(arg);
-                            snprintf(msg, SIZE_MSG, "Calculation complete.\nYour result: %lu", result);
+                            snprintf(outMsg, SIZE_MSG, "Calculation complete.\nYour result: %lu", result);
                             break;
                         }
                         case 1: {
                             printf("Received square root of %d from client %d.\n", arg, index);
                             double_t result = sqrt(arg);
-                            snprintf(msg, SIZE_MSG, "Calculation complete.\nYour result: %f", result);
+                            snprintf(outMsg, SIZE_MSG, "Calculation complete.\nYour result: %.2f", result);
                             break;
                         }
                         default:
@@ -292,16 +221,81 @@ void *clientHandler(void *args) {
                     }
 
 
-
-                    send(sock, msg, sizeof(msg), 0);
-//                    pthread_mutex_unlock(&mutex);
+                    send(sock, outMsg, sizeof(outMsg), 0);
+                    pthread_mutex_unlock(&mutex);
                     fflush(stdout);
+                    continue;
                 }
+
+            } else {
+                printf("Parsing %s\n", msg);
+                char *tar = msg;
+                double arg1 = 0, arg2 = 0;
+                double result;
+
+                while (*tar != '\r' && *tar != '\0') {
+
+                    tar += getNumber(tar, &arg1);
+                    printf("Total arg1 = %f\n", arg1);
+
+                    switch (*tar) {
+                        case '+': {
+                            printf("Found +\n");
+                            tar++;
+                            tar += getNumber(tar, &arg2);
+                            printf("Total arg2 = %f\n", arg2);
+                            result = arg1 + arg2;
+                            printf("Result : %f + %f = %f\n", arg1, arg2, result);
+                            snprintf(outMsg, SIZE_MSG, "Result : %.2f + %.2f = %.2f\n", arg1, arg2, result);
+                            break;
+                        }
+                        case '-': {
+                            printf("Found -\n");
+                            tar++;
+                            tar += getNumber(tar, &arg2);
+                            printf("Total arg2 = %f\n", arg2);
+                            result = arg1 - arg2;
+                            printf("Result : %f - %f = %f\n", arg1, arg2, result);
+                            snprintf(outMsg, SIZE_MSG, "Result : %.2f - %.2f = %.2f\n", arg1, arg2, result);
+                            break;
+                        }
+                        case '*': {
+                            printf("Found *\n");
+                            tar++;
+                            tar += getNumber(tar, &arg2);
+                            printf("Total arg2 = %f\n", arg2);
+                            result = arg1 * arg2;
+                            printf("Result : %f * %f = %f\n", arg1, arg2, result);
+                            snprintf(outMsg, SIZE_MSG, "Result : %.2f * %.2f = %.2f\n", arg1, arg2, result);
+                            break;
+                        }
+                        case '/': {
+                            printf("Found /\n");
+                            tar++;
+                            tar += getNumber(tar, &arg2);
+                            printf("Total arg2 = %f\n", arg2);
+                            result = arg1 / arg2;
+                            printf("Result : %f / %f = %f\n", arg1, arg2, result);
+                            snprintf(outMsg, SIZE_MSG, "Result : %.2f / %.2f = %.2f\n", arg1, arg2, result);
+                            break;
+                        }
+                        default: {
+                            printf("Unknown operation\n");
+                            strcpy(outMsg, "Unknown operation\n");
+                            break;
+                        }
+
+                    }
+
+                    send(sock, outMsg, sizeof(outMsg), 0);
+                }
+
 
             }
 
         }
         memset(msg, 0, sizeof(msg));
+        memset(outMsg, 0, sizeof(outMsg));
     }
 
     printf("Client %d left.\n", index);
@@ -314,23 +308,20 @@ u_int64_t factorial(int n) {
     return r;
 }
 
-void *clientTimer(void *args) {
-    pthread_mutex_lock(&mutex);
-    int index = *((int *) args);
-    pthread_mutex_unlock(&mutex);
-    clients[clientQuantity].time = 0;
-    for (;;) {
-        if (clients[index].cond == 2) {
-            break;
-        }
-        if (clients[index].cond == 1) {
-            clients[index].time++;
-            sleep(1);
-        }
-
+int getNumber(char *tar, double *res) {
+    int count = 0;
+    int num;
+    while ('0' <= *tar && *tar <= '9') {
+        num = *tar - '0';
+//        printf("found digit %d\n", num);
+        *res = *res * 10 + num;
+//        printf("current res = %d\n\n", *res);
+        count++;
+        tar++;
     }
-
+    return count;
 }
+
 
 void *connectionListener(void *args) {
     int listener = *((int *) args);
@@ -353,7 +344,6 @@ void *connectionListener(void *args) {
             }
             for (int i = 0; i < clientQuantity; i++) {
                 pthread_join(clients[i].threadId, NULL);
-                pthread_join(clients[i].timerThd, NULL);
             }
             pthread_mutex_unlock(&mutex);
 
@@ -363,20 +353,13 @@ void *connectionListener(void *args) {
         pthread_mutex_lock(&mutex);
         clients = (struct tInfo *) realloc(clients, sizeof(struct tInfo) * (clientQuantity + 1));
         clients[clientQuantity].socket = s;
-//        clients[clientQuantity].address = inet_ntoa(a.sin_addr);
-//        clients[clientQuantity].port = a.sin_port;
+        clients[clientQuantity].address = inet_ntoa(a.sin_addr);
+        clients[clientQuantity].port = a.sin_port;
         clients[clientQuantity].number = clientQuantity;
-        clients[clientQuantity].cond = 0;
-        clients[clientQuantity].time = 0;
 
         indexClient = clientQuantity;
         if (pthread_create(&(clients[clientQuantity].threadId), NULL, clientHandler, (void *) &indexClient)) {
             printf("ERROR: Can't create thread for client!\n");
-            fflush(stdout);
-            continue;
-        }
-        if (pthread_create(&(clients[clientQuantity].timerThd), NULL, clientTimer, (void *) &indexClient)) {
-            printf("ERROR: Can't create timer thread for client!\n");
             fflush(stdout);
             continue;
         }

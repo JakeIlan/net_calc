@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include <string.h>
 
-#define PORT 12345 //Порт сервера
+#define PORT 1234 //Порт сервера
 #define IP_SERVER "127.0.0.1" //Адрес сервера
 #define SIZE_MSG 100
 
